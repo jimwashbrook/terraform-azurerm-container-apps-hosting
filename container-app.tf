@@ -32,124 +32,58 @@ resource "azapi_resource" "default" {
   parent_id = local.resource_group.id
   location  = local.resource_group.location
   name      = "${local.resource_prefix}-${local.image_name}"
-  body = jsonencode({
-    properties : {
-      managedEnvironmentId = azapi_resource.container_app_env.id
-      configuration = {
-        ingress = {
-          external   = true
-          targetPort = local.container_port
-        }
-        secrets = concat([
-          {
-            "name" : "acr-password",
-            "value" : local.registry_password
-          },
-          {
-            "name" : "applicationinsights--connectionstring",
-            "value" : azurerm_application_insights.main.connection_string
-          },
-          {
-            "name" : "applicationinsights--instrumentationkey",
-            "value" : azurerm_application_insights.main.instrumentation_key
-          },
-          ],
-          local.container_app_blob_storage_sas_secret,
-          [
-            for env_name, env_value in local.container_secret_environment_variables : {
-              name  = lower(replace(env_name, "_", "-"))
-              value = env_value
-            }
-        ])
-        registries = [
-          {
-            "server" : local.registry_server,
-            "username" : local.registry_username,
-            "passwordSecretRef" : "acr-password"
+  body = templatefile("${path.module}/template/azapi_resource.tftpl", {
+    managedEnvironmentId : azapi_resource.container_app_env.id,
+
+    containerAppEnvironmentVariables : local.container_environment_variables,
+    containerAppSecretEnvironmentVariables : local.container_secret_environment_variables,
+    containerAppSecretBlobStorageSASToken : local.container_app_blob_storage_sas_secret,
+
+    containerAppResourcesCPU : local.container_cpu,
+    containerAppResourcesMemory : local.container_memory,
+
+    containerAppEntrypointCommand : local.container_command,
+    containerAppPort : local.container_port,
+
+    containerAppHealthProbes : local.enable_container_health_probe ? concat(
+      local.container_health_probe_use_tcp ? [
+        {
+          type : "Liveness"
+          periodSeconds : local.container_health_probe_interval
+          tcpSocket : {
+            port : local.container_port
           }
-        ]
-      }
-      template = {
-        containers = [
-          {
-            name  = "main"
-            image = "${local.registry_server}/${local.image_name}:${local.image_tag}"
-            resources = {
-              cpu    = local.container_cpu
-              memory = "${local.container_memory}Gi"
-            }
-            command = local.container_command
-            probes = local.enable_container_health_probe ? [
-              {
-                type          = "Liveness"
-                periodSeconds = local.container_health_probe_interval
-                httpGet = {
-                  path = local.container_health_probe_path
-                  port = local.container_port
-                }
-              }
-            ] : []
-            env = concat(
-              [
-                {
-                  "name" : "ApplicationInsights__ConnectionString",
-                  "secretRef" : "applicationinsights--connectionstring"
-                },
-                {
-                  "name" : "ApplicationInsights__InstrumentationKey",
-                  "secretRef" : "applicationinsights--instrumentationkey"
-                }
-              ],
-              local.enable_container_app_blob_storage ?
-              [
-                {
-                  "name" : "ConnectionStrings__BlobStorage",
-                  "secretRef" : "connectionstrings--blobstorage"
-                }
-              ] : [],
-              [
-                for env_name, env_value in local.container_environment_variables : {
-                  name  = env_name
-                  value = env_value
-                }
-              ],
-              [
-                for env_name, env_value in local.container_secret_environment_variables : {
-                  name      = env_name
-                  secretRef = lower(replace(env_name, "_", "-"))
-                }
-            ])
-          }
-        ]
-        scale = {
-          minReplicas = local.container_min_replicas
-          maxReplicas = local.container_max_replicas
-          rules = [
-            {
-              name = "concurrent-http-requests",
-              http = {
-                metadata = {
-                  concurrentRequests = local.container_scale_rule_concurrent_request_count
-                }
-              }
-            },
-            local.container_scale_rule_scale_down_out_of_hours ?
-            {
-              name = "outside-of-normal-operating-hours",
-              custom = {
-                type = "cron"
-                metadata = {
-                  timezone        = "Europe/London"
-                  start           = local.container_scale_rule_out_of_hours_start
-                  end             = local.container_scale_rule_out_of_hours_end
-                  desiredReplicas = local.container_min_replicas
-                }
-              }
-            } : null,
-          ]
         }
-      }
-    }
+      ] : [],
+      local.container_health_probe_use_tcp == false && local.container_health_probe_use_https ? [
+        {
+          type : "Liveness"
+          periodSeconds : local.container_health_probe_interval
+          httpGet : {
+            path : local.container_health_probe_path
+            port : local.container_port
+          }
+        }
+      ] : [],
+    ) : [],
+
+    containerRegistryURL : local.registry_server,
+    containerRegistryUsername : local.registry_username,
+    containerRegistryPassword : local.registry_password,
+    containerRegistryImageName : local.image_name,
+    containerRegistryImageTag : local.image_tag,
+
+    storageAccountEnabled : local.enable_container_app_blob_storage,
+
+    containerAppScaleMinReplicas : local.container_min_replicas,
+    containerAppScaleMaxReplicas : local.container_max_replicas,
+    containerAppScaleThresholdRequestCount : local.container_scale_rule_concurrent_request_count,
+    containerAppScaleEnableQuietHours : local.container_scale_rule_scale_down_out_of_hours,
+    containerAppScaleQuietHoursStart : local.container_scale_rule_out_of_hours_start,
+    containerAppScaleQuietHoursEnd : local.container_scale_rule_out_of_hours_end
+
+    appInsightsConnectionString : azurerm_application_insights.main.connection_string,
+    appInsightsInstrumentationKey : azurerm_application_insights.main.instrumentation_key,
   })
 
   response_export_values = [

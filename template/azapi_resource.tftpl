@@ -1,0 +1,115 @@
+${jsonencode({
+  "properties" : {
+    "managedEnvironmentId": "${ managedEnvironmentId }",
+    "configuration": {
+      "ingress": {
+        "external"  : true,
+        "targetPort": containerAppPort
+      },
+      "secrets": concat(
+        [
+          {
+            name : "acr-password",
+            value : "${ containerRegistryPassword }"
+          },
+          {
+            name : "applicationinsights--connectionstring",
+            value : "${ appInsightsConnectionString }"
+          },
+          {
+            name : "applicationinsights--instrumentationkey",
+            value : "${ appInsightsInstrumentationKey }"
+          }
+        ],
+        containerAppSecretBlobStorageSASToken,
+        [
+          for env_name, env_value in containerAppSecretEnvironmentVariables :
+            {
+              name : lower(replace(env_name, "_", "-"))
+              value: env_value
+            }
+        ]
+      )
+      "registries": [
+        {
+          "server" : "${ containerRegistryURL }",
+          "username" : "${ containerRegistryUsername }",
+          "passwordSecretRef" : "acr-password"
+        }
+      ]
+    }
+    "template": {
+      "containers": [
+        {
+          "name" : "main"
+          "image": "${ containerRegistryURL }/${ containerRegistryImageName }:${ containerRegistryImageTag }"
+          "resources": {
+            "cpu"   : "${ containerAppResourcesCPU }"
+            "memory": "${ containerAppResourcesMemory }Gi"
+          }
+          "command": containerAppEntrypointCommand
+          "probes": containerAppHealthProbes
+          "env": concat(
+            [
+              {
+                "name" : "ApplicationInsights__ConnectionString",
+                "secretRef" : "applicationinsights--connectionstring"
+              },
+              {
+                "name" : "ApplicationInsights__InstrumentationKey",
+                "secretRef" : "applicationinsights--instrumentationkey"
+              }
+            ],
+            storageAccountEnabled ?
+            [
+              {
+                "name" : "ConnectionStrings__BlobStorage",
+                "secretRef" : "connectionstrings--blobstorage"
+              }
+            ] : [],
+            [
+              for env_name, env_value in containerAppEnvironmentVariables :
+                {
+                  name : env_name
+                  value: env_value
+                }
+            ],
+            [
+              for env_name, env_value in containerAppSecretEnvironmentVariables :
+                {
+                  name     : env_name
+                  secretRef: lower(replace(env_name, "_", "-"))
+                }
+          ])
+        }
+      ]
+      "scale": {
+        "minReplicas": containerAppScaleMinReplicas
+        "maxReplicas": containerAppScaleMaxReplicas
+        "rules": [
+          {
+            "name": "concurrent-http-requests",
+            "http": {
+              "metadata": {
+                "concurrentRequests": containerAppScaleThresholdRequestCount
+              }
+            }
+          },
+          containerAppScaleEnableQuietHours ?
+          {
+            "name": "outside-of-normal-operating-hours",
+            "custom": {
+              "type": "cron"
+              "metadata": {
+                "timezone"       : "Europe/London"
+                "start"          : "${ containerAppScaleQuietHoursStart }"
+                "end"            : "${ containerAppScaleQuietHoursEnd }"
+                "desiredReplicas": containerAppScaleMinReplicas
+              }
+            }
+          } : null,
+        ]
+      }
+    }
+  }
+})}
