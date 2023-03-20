@@ -413,6 +413,8 @@ jobs:
 | <a name="input_container_environment_variables"></a> [container\_environment\_variables](#input\_container\_environment\_variables) | Container environment variables | `map(string)` | `{}` | no |
 | <a name="input_container_health_probe_interval"></a> [container\_health\_probe\_interval](#input\_container\_health\_probe\_interval) | How often in seconds to poll the Container to determine liveness | `number` | `30` | no |
 | <a name="input_container_health_probe_path"></a> [container\_health\_probe\_path](#input\_container\_health\_probe\_path) | Specifies the path that is used to determine the liveness of the Container | `string` | `"/"` | no |
+| <a name="input_container_health_probe_use_https"></a> [container\_health\_probe\_use\_https](#input\_container\_health\_probe\_use\_https) | Enable a HTTPS GET test for the Container liveness probe | `bool` | `true` | no |
+| <a name="input_container_health_probe_use_tcp"></a> [container\_health\_probe\_use\_tcp](#input\_container\_health\_probe\_use\_tcp) | Enable a TCP test for the Container liveness probe | `bool` | `false` | no |
 | <a name="input_container_max_replicas"></a> [container\_max\_replicas](#input\_container\_max\_replicas) | Container max replicas | `number` | `2` | no |
 | <a name="input_container_memory"></a> [container\_memory](#input\_container\_memory) | Container memory in GB | `number` | `2` | no |
 | <a name="input_container_min_replicas"></a> [container\_min\_replicas](#input\_container\_min\_replicas) | Container min replicas | `number` | `1` | no |

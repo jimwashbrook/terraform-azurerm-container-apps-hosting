@@ -222,6 +222,18 @@ variable "container_health_probe_path" {
   default     = "/"
 }
 
+variable "container_health_probe_use_tcp" {
+  description = "Enable a TCP test for the Container liveness probe"
+  type        = bool
+  default     = false
+}
+
+variable "container_health_probe_use_https" {
+  description = "Enable a HTTPS GET test for the Container liveness probe"
+  type        = bool
+  default     = true
+}
+
 variable "container_command" {
   description = "Container command"
   type        = list(any)

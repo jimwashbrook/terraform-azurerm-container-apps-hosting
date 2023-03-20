@@ -49,6 +49,8 @@ locals {
   enable_container_health_probe                 = var.enable_container_health_probe
   container_health_probe_interval               = var.container_health_probe_interval
   container_health_probe_path                   = var.container_health_probe_path
+  container_health_probe_use_tcp                = var.container_health_probe_use_tcp
+  container_health_probe_use_https              = var.container_health_probe_use_https
   enable_worker_container                       = var.enable_worker_container
   worker_container_command                      = var.worker_container_command
   worker_container_min_replicas                 = var.worker_container_min_replicas
