@@ -13,11 +13,11 @@ locals {
 
   # Networking
   launch_in_vnet                           = var.launch_in_vnet
+  environment_accessibility_level          = var.environment_accessibility_level
   existing_virtual_network                 = var.existing_virtual_network
   virtual_network                          = local.existing_virtual_network == "" ? azurerm_virtual_network.default[0] : data.azurerm_virtual_network.existing_virtual_network[0]
   virtual_network_address_space            = var.virtual_network_address_space
   virtual_network_address_space_mask       = element(split("/", local.virtual_network_address_space), 1)
-  environment_accessibility_level          = var.environment_accessibility_level
   container_apps_infra_subnet_cidr         = cidrsubnet(local.virtual_network_address_space, 23 - local.virtual_network_address_space_mask, 0)
   mssql_private_endpoint_subnet_cidr       = cidrsubnet(local.virtual_network_address_space, 23 - local.virtual_network_address_space_mask, 1)
   container_instances_subnet_cidr          = cidrsubnet(local.virtual_network_address_space, 23 - local.virtual_network_address_space_mask, 2)
@@ -58,9 +58,9 @@ locals {
   postgresql_network_connectivity_method = var.postgresql_network_connectivity_method
   postgresql_firewall_ipv4_allow = merge(
     {
-      "container-app" = {
-        start_ip_address = jsondecode(azapi_resource.default.output).properties.outboundIpAddresses[0]
-        end_ip_address   = jsondecode(azapi_resource.default.output).properties.outboundIpAddresses[0]
+      "container-apps-env" = {
+        start_ip_address = azurerm_container_app_environment.container_app_env.static_ip_address
+        end_ip_address   = azurerm_container_app_environment.container_app_env.static_ip_address
       }
     },
     var.postgresql_firewall_ipv4_allow
@@ -88,35 +88,22 @@ locals {
   # Container App / Container image
   image_name = var.image_name
   image_tag  = var.image_tag
-  # Container App / Scale rules
-  container_scale_rule_concurrent_request_count = tostring(var.container_scale_rule_concurrent_request_count)
-  container_scale_rule_scale_down_out_of_hours  = var.container_scale_rule_scale_down_out_of_hours
-  container_scale_rule_out_of_hours_start       = var.container_scale_rule_out_of_hours_start
-  container_scale_rule_out_of_hours_end         = var.container_scale_rule_out_of_hours_end
   # Container App / Liveness Probe
   enable_container_health_probe   = var.enable_container_health_probe
   container_health_probe_interval = var.container_health_probe_interval
   container_health_probe_path     = var.container_health_probe_path
   container_health_probe_protocol = var.container_health_probe_protocol
-  container_health_tcp_probe = [
-    {
-      type          = "Liveness"
-      periodSeconds = local.container_health_probe_interval
-      tcpSocket = {
-        port = local.container_port
-      }
-    }
-  ]
-  container_health_https_probe = [
-    {
-      type          = "Liveness"
-      periodSeconds = local.container_health_probe_interval
-      httpGet = {
-        path = local.container_health_probe_path
-        port = local.container_port
-      }
-    }
-  ]
+  container_health_tcp_probe = {
+    interval_seconds = local.container_health_probe_interval
+    transport        = "TCP"
+    port             = local.container_port
+  }
+  container_health_https_probe = {
+    interval_seconds = local.container_health_probe_interval
+    transport        = "HTTPS"
+    port             = local.container_port
+    path             = local.container_health_probe_path
+  }
   container_health_probes = {
     "tcp" : local.container_health_tcp_probe
     "https" : local.container_health_https_probe
@@ -133,27 +120,77 @@ locals {
       response_export_values = custom_container_app_value.response_export_values
       body = {
         properties = {
-          managedEnvironmentId = custom_container_app_value.body.properties.managedEnvironmentId != "" ? custom_container_app_value.body.properties.managedEnvironmentId : azapi_resource.container_app_env.id,
+          managedEnvironmentId = custom_container_app_value.body.properties.managedEnvironmentId != "" ? custom_container_app_value.body.properties.managedEnvironmentId : azurerm_container_app_environment.container_app_env.id,
           configuration        = custom_container_app_value.body.properties.configuration,
           template             = custom_container_app_value.body.properties.template
         }
       }
     }
   }
+  # Container App / Secrets
+  # Note: Secrets cannot be removed from the service once added, attempting to do so will result in an error.
+  # Their values may be zeroed, i.e. set to "", but the named secret must persist.
+  # This is why the conditions are within the 'value' property
+  container_app_secret_defaults = {
+    "acr-password"                            = local.registry_password
+    "applicationinsights--connectionstring"   = azurerm_application_insights.main.connection_string
+    "applicationinsights--instrumentationkey" = azurerm_application_insights.main.instrumentation_key
+    "connectionstrings--redis"                = local.enable_redis_cache ? azurerm_redis_cache.default[0].primary_connection_string : ""
+    "connectionstrings--blobstorage"          = local.enable_container_app_blob_storage ? "${azurerm_storage_account.container_app[0].primary_blob_endpoint}${azurerm_storage_container.container_app[0].name}${data.azurerm_storage_account_blob_container_sas.container_app[0].sas}" : ""
+  }
+  container_app_secret_user_defined = { for env_name, env_value in local.container_secret_environment_variables : lower(replace(env_name, "_", "-")) => env_value }
+  container_app_secrets = tomap(merge(
+    local.container_app_secret_defaults,
+    nonsensitive(local.container_app_secret_user_defined) # Marked as 'sensitive' at run time
+  ))
+  # Container App / Environment variables
+  container_app_environment_variables_app_insights = [
+    {
+      "name" : "ApplicationInsights__ConnectionString",
+      "secretRef" : "applicationinsights--connectionstring"
+    },
+    {
+      "name" : "ApplicationInsights__InstrumentationKey",
+      "secretRef" : "applicationinsights--instrumentationkey"
+    }
+  ]
+  container_app_environment_variables_redis = local.enable_redis_cache ? [
+    {
+      "name" : "ConnectionStrings__Redis",
+      "secretRef" : "connectionstrings--redis"
+    }
+  ] : []
+  container_app_environment_variables_blob_storage = local.enable_container_app_blob_storage ? [
+    {
+      "name" : "ConnectionStrings__BlobStorage",
+      "secretRef" : "connectionstrings--blobstorage"
+    }
+  ] : []
+  container_app_environment_variables_user_defined = concat([
+    for env_name, env_value in local.container_environment_variables : {
+      name  = env_name
+      value = env_value
+    }
+    ], [
+    for env_name, env_value in nonsensitive(local.container_secret_environment_variables) : {
+      name      = env_name
+      secretRef = lower(replace(env_name, "_", "-"))
+    }
+  ])
+  container_app_environment_variables = { for environment_variable in concat(
+    local.container_app_environment_variables_user_defined,
+    local.container_app_environment_variables_app_insights,
+    local.container_app_environment_variables_redis,
+    local.container_app_environment_variables_blob_storage
+  ) : environment_variable.name => environment_variable }
 
   # Storage Account
   enable_container_app_blob_storage                = var.enable_container_app_blob_storage
   container_app_blob_storage_public_access_enabled = var.container_app_blob_storage_public_access_enabled
   container_app_blob_storage_ipv4_allow_list = concat(
-    jsondecode(azapi_resource.default.output).properties.outboundIpAddresses,
+    azurerm_container_app.container_apps["main"].outbound_ip_addresses,
     var.container_app_blob_storage_ipv4_allow_list
   )
-  container_app_blob_storage_sas_secret = local.enable_container_app_blob_storage ? [
-    {
-      name  = "connectionstrings--blobstorage",
-      value = "${azurerm_storage_account.container_app[0].primary_blob_endpoint}${azurerm_storage_container.container_app[0].name}${data.azurerm_storage_account_blob_container_sas.container_app[0].sas}"
-    }
-  ] : []
 
   # Azure DNS Zone
   enable_dns_zone      = var.enable_dns_zone
@@ -182,7 +219,7 @@ locals {
     for domain in local.cdn_frontdoor_custom_domains : replace(domain, local.dns_zone_domain_name, "") if endswith(domain, local.dns_zone_domain_name)
   ]) : []
   cdn_frontdoor_custom_domains_create_dns_records = var.cdn_frontdoor_custom_domains_create_dns_records
-  cdn_frontdoor_origin_fqdn_override              = var.cdn_frontdoor_origin_fqdn_override != "" ? var.cdn_frontdoor_origin_fqdn_override : jsondecode(azapi_resource.default.output).properties.configuration.ingress.fqdn
+  cdn_frontdoor_origin_fqdn_override              = var.cdn_frontdoor_origin_fqdn_override != "" ? var.cdn_frontdoor_origin_fqdn_override : azurerm_container_app.container_apps["main"].latest_revision_fqdn
   cdn_frontdoor_origin_host_header_override       = var.cdn_frontdoor_origin_host_header_override != "" ? var.cdn_frontdoor_origin_host_header_override : null
   cdn_frontdoor_origin_http_port                  = var.cdn_frontdoor_origin_http_port
   cdn_frontdoor_origin_https_port                 = var.cdn_frontdoor_origin_https_port
@@ -228,10 +265,10 @@ locals {
   monitor_endpoint_healthcheck    = var.monitor_endpoint_healthcheck
   monitor_http_availability_fqdn = local.enable_cdn_frontdoor ? (
     length(local.cdn_frontdoor_custom_domains) >= 1 ? local.cdn_frontdoor_custom_domains[0] : azurerm_cdn_frontdoor_endpoint.endpoint[0].host_name
-  ) : jsondecode(azapi_resource.default.output).properties.configuration.ingress.fqdn
+  ) : azurerm_container_app.container_apps["main"].latest_revision_fqdn
   monitor_http_availability_url = "https://${local.monitor_http_availability_fqdn}${local.monitor_endpoint_healthcheck}"
-  monitor_default_container_id  = { "default_id" = azapi_resource.default.id }
-  monitor_worker_container_id   = local.enable_worker_container ? { "worker_id" = azapi_resource.worker[0].id } : {}
+  monitor_default_container_id  = { "default_id" = azurerm_container_app.container_apps["main"].id }
+  monitor_worker_container_id   = local.enable_worker_container ? { "worker_id" = azurerm_container_app.container_apps["worker"].id } : {}
   monitor_container_ids = merge(
     local.monitor_default_container_id,
     local.monitor_worker_container_id,
@@ -267,5 +304,5 @@ locals {
   )
 
   # Misc.
-  tagging_command = "timeout 15m ${path.module}/script/apply-tags-to-container-app-env-mc-resource-group -n \"${azapi_resource.container_app_env.name}\" -r \"${local.resource_group.name}\" -t \"${replace(jsonencode(local.tags), "\"", "\\\"")}\""
+  tagging_command = "timeout 15m ${path.module}/script/apply-tags-to-container-app-env-mc-resource-group -n \"${azurerm_container_app_environment.container_app_env.name}\" -r \"${local.resource_group.name}\" -t \"${replace(jsonencode(local.tags), "\"", "\\\"")}\""
 }

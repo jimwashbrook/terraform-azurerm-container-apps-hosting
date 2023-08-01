@@ -539,10 +539,7 @@ jobs:
 
 | Name | Type |
 |------|------|
-| [azapi_resource.container_app_env](https://registry.terraform.io/providers/Azure/azapi/latest/docs/resources/resource) | resource |
 | [azapi_resource.custom_container_apps](https://registry.terraform.io/providers/Azure/azapi/latest/docs/resources/resource) | resource |
-| [azapi_resource.default](https://registry.terraform.io/providers/Azure/azapi/latest/docs/resources/resource) | resource |
-| [azapi_resource.worker](https://registry.terraform.io/providers/Azure/azapi/latest/docs/resources/resource) | resource |
 | [azurerm_application_insights.main](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/application_insights) | resource |
 | [azurerm_application_insights_standard_web_test.main](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/application_insights_standard_web_test) | resource |
 | [azurerm_application_insights_standard_web_test.tls](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/application_insights_standard_web_test) | resource |
@@ -561,6 +558,8 @@ jobs:
 | [azurerm_cdn_frontdoor_rule_set.redirects](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/cdn_frontdoor_rule_set) | resource |
 | [azurerm_cdn_frontdoor_rule_set.remove_response_headers](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/cdn_frontdoor_rule_set) | resource |
 | [azurerm_cdn_frontdoor_security_policy.waf](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/cdn_frontdoor_security_policy) | resource |
+| [azurerm_container_app.container_apps](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/container_app) | resource |
+| [azurerm_container_app_environment.container_app_env](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/container_app_environment) | resource |
 | [azurerm_container_registry.acr](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/container_registry) | resource |
 | [azurerm_dns_a_record.dns_a_records](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/dns_a_record) | resource |
 | [azurerm_dns_a_record.dns_alias_records](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/dns_a_record) | resource |
@@ -709,10 +708,6 @@ jobs:
 | <a name="input_container_memory"></a> [container\_memory](#input\_container\_memory) | Container memory in GB | `number` | `2` | no |
 | <a name="input_container_min_replicas"></a> [container\_min\_replicas](#input\_container\_min\_replicas) | Container min replicas | `number` | `1` | no |
 | <a name="input_container_port"></a> [container\_port](#input\_container\_port) | Container port | `number` | `80` | no |
-| <a name="input_container_scale_rule_concurrent_request_count"></a> [container\_scale\_rule\_concurrent\_request\_count](#input\_container\_scale\_rule\_concurrent\_request\_count) | Maximum number of concurrent HTTP requests before a new replica is created | `number` | `10` | no |
-| <a name="input_container_scale_rule_out_of_hours_end"></a> [container\_scale\_rule\_out\_of\_hours\_end](#input\_container\_scale\_rule\_out\_of\_hours\_end) | Specify a time using Linux cron format that represents the end of the out-of-hours window. Defaults to 06:00 | `string` | `"0 6 * * *"` | no |
-| <a name="input_container_scale_rule_out_of_hours_start"></a> [container\_scale\_rule\_out\_of\_hours\_start](#input\_container\_scale\_rule\_out\_of\_hours\_start) | Specify a time using Linux cron format that represents the start of the out-of-hours window. Defaults to 23:00 | `string` | `"0 23 * * *"` | no |
-| <a name="input_container_scale_rule_scale_down_out_of_hours"></a> [container\_scale\_rule\_scale\_down\_out\_of\_hours](#input\_container\_scale\_rule\_scale\_down\_out\_of\_hours) | Should the Container App scale down to the minReplicas outside of normal operating hours? | `bool` | `false` | no |
 | <a name="input_container_secret_environment_variables"></a> [container\_secret\_environment\_variables](#input\_container\_secret\_environment\_variables) | Container environment variables, which are defined as `secrets` within the container app configuration. This is to help reduce the risk of accidentally exposing secrets. | `map(string)` | `{}` | no |
 | <a name="input_custom_container_apps"></a> [custom\_container\_apps](#input\_custom\_container\_apps) | Custom container apps, by default deployed within the container app environment | <pre>map(object({<br>    response_export_values = optional(list(string), [])<br>    body = object({<br>      properties = object({<br>        managedEnvironmentId = optional(string, "")<br>        configuration = object({<br>          activeRevisionsMode = optional(string, "single")<br>          secrets             = optional(list(map(string)), [])<br>          ingress             = optional(any, {})<br>          registries          = optional(list(map(any)), [])<br>          dapr                = optional(map(string), {})<br>        })<br>        template = object({<br>          revisionSuffix = string<br>          containers     = list(any)<br>          scale          = map(any)<br>          volumes        = list(map(string))<br>        })<br>      })<br>    })<br>  }))</pre> | `{}` | no |
 | <a name="input_dns_a_records"></a> [dns\_a\_records](#input\_dns\_a\_records) | DNS A records to add to the DNS Zone | <pre>map(<br>    object({<br>      ttl : optional(number, 300),<br>      records : list(string)<br>    })<br>  )</pre> | `{}` | no |
